@@ -262,6 +262,7 @@ class ConfuciusTTS:
         text: str,
         lang: str,
         prompt_wav: str,
+        raw: bool = False,
         temperature: float = 0.8,
         top_p: float = 0.8,
         top_k: int = 30,
@@ -285,6 +286,7 @@ class ConfuciusTTS:
             text: Input text to synthesize
             lang: Language code (e.g., "zh", "en", "ja", "ko")
             prompt_wav: Path to reference audio for voice cloning
+            raw: If true, skip text normalization and use input text as-is
             temperature: Sampling temperature for T2S (higher = more diverse)
             top_p: Nucleus sampling probability threshold
             top_k: Top-k sampling parameter
@@ -303,9 +305,14 @@ class ConfuciusTTS:
             Generated audio waveform, shape (1, T_audio) at target sample rate
         """
         # Normalize text (punctuation, numbers, etc.)
-        text = self.normalizer.normalize(text, language=lang)
-        if verbose:
-            print(f"[ConfuciusTTS] normalized text: {text}")
+        # Skip normalization if raw is True (user takes responsibility for text)
+        if raw:
+            if verbose:
+                print(f"[ConfuciusTTS] skipping normalization (raw=True): {text}")
+        else:
+            text = self.normalizer.normalize(text, language=lang)
+            if verbose:
+                print(f"[ConfuciusTTS] normalized text: {text}")
 
         # Extract conditioning from reference audio
         wav_16k, wav_tgt = self._load_prompt(prompt_wav)
