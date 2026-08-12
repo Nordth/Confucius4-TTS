@@ -63,6 +63,7 @@ class Text2SemanticConfig(PretrainedConfig):
     ):
         super().__init__(**kwargs)
         self.num_layers = num_layers
+        self.num_hidden_layers = num_layers
         self.model_dim = model_dim
         self.num_heads = num_heads
         self.max_text_seq_lens = max_text_seq_lens
@@ -357,8 +358,14 @@ class Text2Semantic(PreTrainedModel, GenerationMixin):
         """
         attention_mask = kwargs.get("attention_mask", None)
 
-        if past_key_values:
-            # Use only last token when KV cache is available
+        has_cache = past_key_values is not None
+        if has_cache and hasattr(past_key_values, "get_seq_length"):
+            try:
+                has_cache = past_key_values.get_seq_length() > 0
+            except Exception:
+                has_cache = True
+
+        if has_cache:
             input_ids = input_ids[:, -1:]
 
         return {
@@ -370,15 +377,9 @@ class Text2Semantic(PreTrainedModel, GenerationMixin):
 
     @staticmethod
     def _reorder_cache(past_key_values, beam_idx):
-        """Reorder cached KV states for beam search.
-
-        Args:
-            past_key_values: Cached states for all layers
-            beam_idx: Beam indices to select
-
-        Returns:
-            Reordered cache
-        """
+        """Reorder cached KV states for beam search."""
+        if past_key_values is not None and hasattr(past_key_values, "reorder_cache"):
+            return past_key_values.reorder_cache(beam_idx)
         return tuple(
             tuple(
                 past_state.index_select(0, beam_idx.to(past_state.device))
