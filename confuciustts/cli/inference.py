@@ -75,7 +75,7 @@ class ConfuciusTTS:
         style_encoder_path = hf_hub_download(
             "funasr/campplus", filename=spk_cfg["checkpoint"]
         )
-        spk_state = torch.load(style_encoder_path, map_location="cpu")
+        spk_state = torch.load(style_encoder_path, map_location="cpu", weights_only=False)
         if isinstance(spk_state, dict) and "state_dict" in spk_state:
             spk_state = spk_state["state_dict"]
         self.style_encoder.load_state_dict(spk_state, strict=False)
