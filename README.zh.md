@@ -403,11 +403,13 @@ Confucius4-TTS 基于以下开源项目构建：
 如果您在研究或项目中使用了 Confucius4-TTS，请考虑引用：
 
 ```bibtex
-@misc{confucius4tts_2026,
-  title        = {Confucius4-TTS: A Multilingual and Cross-Lingual Zero-Shot TTS Engine},
-  author       = {{NetEase Youdao}},
-  year         = {2026},
-  howpublished = {\url{https://github.com/netease-youdao/Confucius4-TTS}},
-  note         = {GitHub repository}
+@misc{wang2026confucius4tts,
+  title         = {Confucius4-TTS: Transcript-Free Cross-Lingual Zero-Shot TTS with a Learnable Speaker Encoder},
+  author        = {Huaxuan Wang and Huimin Wang and Ruiyu Zhang and Yingjie Li and Yitao Duan},
+  year          = {2026},
+  eprint        = {2608.11650},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SD},
+  url           = {https://arxiv.org/abs/2608.11650}
 }
 ```
