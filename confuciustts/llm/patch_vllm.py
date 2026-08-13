@@ -7,9 +7,12 @@ created:
    registry so it can be loaded by name.
 2. Monkeypatches ``GPUModelRunner._prepare_inputs`` so that, for this model,
    position ids are shifted to be relative to the start of the *semantic*
-   sequence (excluding the speaker/text/BOS prefix). The T2S positional
-   embeddings are trained on that convention, so without this correction the
-   generated audio would be wrong.
+   sequence (excluding the speaker/text/BOS prefix). The shift is recorded per
+   request at its prefill and reapplied to every decode step, keeping BOS at
+   position 0 and generated token *i* at position *1+i* exactly like the native
+   (non-vLLM) T2S path. The T2S positional embeddings are trained on that
+   convention, so without this correction the generated audio is wrong (and
+   without the decode correction generation stops early, cutting sentences).
 """
 
 from vllm import ModelRegistry
@@ -43,8 +46,11 @@ def _prepare_inputs(
     """vLLM's GPUModelRunner._prepare_inputs + Text2SemanticVLLM position shift.
 
     Delegates to the installed vLLM's implementation, then shifts the scheduled
-    positions of Text2SemanticVLLM prefill requests so the semantic sequence is
-    indexed from 0 (the last prompt position carries the BOS prefix embedding).
+    positions of Text2SemanticVLLM requests so the semantic sequence is indexed
+    from 0: the last prompt position carries the BOS prefix embedding (prefill),
+    and every decode token continues at position 1, 2, ... matching the native
+    KV-cached generation. The offset is recorded when a multimodal request is
+    prefilled and reapplied on all later steps so it also survives preemption.
     The KV slot mapping is left untouched (it is computed from the unshifted
     positions inside the original implementation); only the position ids passed
     to the model forward are corrected.
@@ -57,18 +63,41 @@ def _prepare_inputs(
     if not isinstance(model, Text2SemanticVLLM):
         return logits_indices, spec_decode_metadata
 
-    # Only the prefill of a request that carries audio prefix embeddings needs
-    # the shift: the whole scheduled prompt is then the (speaker + text + BOS)
-    # prefix, whose semantic positions start at 0. Decode steps of the same
-    # request (and any non-multimodal request) are not touched.
-    per_req_offsets = np.zeros(self.input_batch.num_reqs, dtype=np.int64)
+    # Per-request semantic offset, kept between steps so decode tokens continue
+    # from position 1 instead of jumping to the full prefix length.
+    offsets_store = getattr(self, "_confucius_tts_req_offsets", None)
+    if offsets_store is None:
+        offsets_store = {}
+        self._confucius_tts_req_offsets = offsets_store
+
+    # Drop finished requests so the store does not grow without bound.
+    finished = getattr(scheduler_output, "finished_req_ids", None)
+    if finished:
+        for req_id in finished:
+            offsets_store.pop(req_id, None)
+
+    req_id_to_index = self.input_batch.req_id_to_index
+    num_reqs = self.input_batch.num_reqs
+    per_req_offsets = np.zeros(num_reqs, dtype=np.int64)
+
+    # Prefill of a request that carries audio prefix embeddings: the whole
+    # scheduled prompt is then the (speaker + text + BOS) prefix, whose semantic
+    # positions start at 0. Record the offset for the future decode steps.
     for new_req in scheduler_output.scheduled_new_reqs:
         if not new_req.mm_features or not new_req.prompt_token_ids:
             continue
-        req_index = self.input_batch.req_id_to_index.get(new_req.req_id)
-        if req_index is None or req_index >= self.input_batch.num_reqs:
-            continue
-        per_req_offsets[req_index] = -(len(new_req.prompt_token_ids) - 1)
+        offset = -(len(new_req.prompt_token_ids) - 1)
+        offsets_store[new_req.req_id] = offset
+        req_index = req_id_to_index.get(new_req.req_id)
+        if req_index is not None and req_index < num_reqs:
+            per_req_offsets[req_index] = offset
+
+    # Decode steps (and preempted/resumed requests) do not appear in
+    # scheduled_new_reqs, so reapply the offset recorded at their prefill.
+    for req_id, offset in offsets_store.items():
+        req_index = req_id_to_index.get(req_id)
+        if req_index is not None and req_index < num_reqs:
+            per_req_offsets[req_index] = offset
 
     offsets_np = np.repeat(per_req_offsets, num_scheduled_tokens)
     if np.any(offsets_np):
