@@ -36,7 +36,8 @@ from vllm.model_executor.models.utils import (
 )
 from vllm.model_executor.models.gpt2 import GPT2Block
 from vllm.model_executor.models.interfaces import SupportsMultiModal, MultiModalEmbeddings
-from vllm.multimodal import MULTIMODAL_REGISTRY, ModalityData
+from vllm.multimodal import MULTIMODAL_REGISTRY
+from vllm.inputs import ModalityData
 from vllm.multimodal.inputs import MultiModalFieldConfig, MultiModalKwargsItems
 from vllm.multimodal.processing import (
     BaseMultiModalProcessor,
