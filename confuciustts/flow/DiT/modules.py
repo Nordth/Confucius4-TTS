@@ -278,6 +278,8 @@ class SinusPositionEmbedding(nn.Module):
             Position embeddings, shape (B, dim)
         """
         device = x.device
+        if x.dim() == 0:
+            x = x.unsqueeze(0)
         half_dim = self.dim // 2
         emb = math.log(10000) / half_dim
         emb = torch.exp(torch.arange(half_dim, device=device).float() * -emb)
